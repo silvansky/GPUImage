@@ -5,6 +5,7 @@
 {
     NSMutableDictionary *shaderProgramCache;
     CGLShareGroupObj *_sharegroup;
+    NSOpenGLPixelFormat *_pixelFormat;
 }
 
 @end
@@ -14,6 +15,8 @@
 @synthesize context = _context;
 @synthesize currentShaderProgram = _currentShaderProgram;
 @synthesize contextQueue = _contextQueue;
+@synthesize coreVideoTextureCache = _coreVideoTextureCache;
+@synthesize framebufferCache = _framebufferCache;
 
 static void *openGLESContextQueueKey;
 
@@ -51,6 +54,11 @@ static void *openGLESContextQueueKey;
 + (dispatch_queue_t)sharedContextQueue;
 {
     return [[self sharedImageProcessingContext] contextQueue];
+}
+
++ (GPUImageFramebufferCache *)sharedFramebufferCache;
+{
+    return [[self sharedImageProcessingContext] framebufferCache];
 }
 
 + (void)useImageProcessingContext;
@@ -113,6 +121,10 @@ static void *openGLESContextQueueKey;
     return [extensionNames containsObject:extension];
 }
 
++ (BOOL)deviceSupportsFramebufferReads;
+{
+    return NO;
+}
 
 // http://www.khronos.org/registry/gles/extensions/EXT/EXT_texture_rg.txt
 
@@ -186,16 +198,33 @@ static void *openGLESContextQueueKey;
         0
     };
     
-    NSOpenGLPixelFormat *pixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:pixelFormatAttributes];
-	if (pixelFormat == nil)
+    _pixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:pixelFormatAttributes];
+	if (_pixelFormat == nil)
 	{
 		NSLog(@"Error: No appropriate pixel format found");
 	}
     // TODO: Take into account the sharegroup
-    NSOpenGLContext *context = [[NSOpenGLContext alloc] initWithFormat:pixelFormat shareContext:nil];
+    NSOpenGLContext *context = [[NSOpenGLContext alloc] initWithFormat:_pixelFormat shareContext:nil];
 
     NSAssert(context != nil, @"Unable to create an OpenGL context. The GPUImage framework requires OpenGL support to work.");
     return context;
+}
+
+- (CVOpenGLTextureCacheRef)coreVideoTextureCache;
+{
+    if (_coreVideoTextureCache == NULL)
+    {
+        
+        CVReturn err = CVOpenGLTextureCacheCreate(kCFAllocatorDefault, NULL, (__bridge void *)[self context], [_pixelFormat CGLPixelFormatObj], NULL, &_coreVideoTextureCache);
+        
+        if (err)
+        {
+            NSAssert(NO, @"Error at CVOpenGLESTextureCacheCreate %d", err);
+        }
+        
+    }
+    
+    return _coreVideoTextureCache;
 }
 
 
@@ -224,6 +253,16 @@ static void *openGLESContextQueueKey;
     }
     
     return _context;
+}
+
+- (GPUImageFramebufferCache *)framebufferCache;
+{
+    if (_framebufferCache == nil)
+    {
+        _framebufferCache = [[GPUImageFramebufferCache alloc] init];
+    }
+    
+    return _framebufferCache;
 }
 
 @end
